@@ -1,0 +1,109 @@
+ARM GAS  /tmp/ccU1QAbB.s 			page 1
+
+
+   1              		.syntax unified
+   2              		.cpu cortex-m0
+   3              		.fpu softvfp
+   4              		.eabi_attribute 20, 1
+   5              		.eabi_attribute 21, 1
+   6              		.eabi_attribute 23, 3
+   7              		.eabi_attribute 24, 1
+   8              		.eabi_attribute 25, 1
+   9              		.eabi_attribute 26, 1
+  10              		.eabi_attribute 30, 1
+  11              		.eabi_attribute 34, 0
+  12              		.eabi_attribute 18, 4
+  13              		.thumb
+  14              		.syntax unified
+  15              		.file	"flashlight_main.c"
+  16              		.text
+  17              	.Ltext0:
+  18              		.cfi_sections	.debug_frame
+  19              		.section	.text.main,"ax",%progbits
+  20              		.align	2
+  21              		.global	main
+  22              		.code	16
+  23              		.thumb_func
+  25              	main:
+  26              	.LFB35:
+  27              		.file 1 "main/src/flashlight_main.c"
+   1:main/src/flashlight_main.c **** /*
+   2:main/src/flashlight_main.c ****  *  flashlight_main.c
+   3:main/src/flashlight_main.c ****  *
+   4:main/src/flashlight_main.c ****  *  Created on: 28 Jul 2019
+   5:main/src/flashlight_main.c ****  *  Author: Jiri Manak
+   6:main/src/flashlight_main.c ****  */
+   7:main/src/flashlight_main.c **** 
+   8:main/src/flashlight_main.c **** #include "main.h"
+   9:main/src/flashlight_main.c **** #include "flashlight_main.h"
+  10:main/src/flashlight_main.c **** 
+  11:main/src/flashlight_main.c **** int main(void)
+  12:main/src/flashlight_main.c **** {
+  28              		.loc 1 12 0
+  29              		.cfi_startproc
+  30              		@ Volatile: function does not return.
+  31              		@ args = 0, pretend = 0, frame = 0
+  32              		@ frame_needed = 0, uses_anonymous_args = 0
+  33 0000 10B5     		push	{r4, lr}
+  34              	.LCFI0:
+  35              		.cfi_def_cfa_offset 8
+  36              		.cfi_offset 4, -8
+  37              		.cfi_offset 14, -4
+  13:main/src/flashlight_main.c ****     SystemClock_Config();
+  38              		.loc 1 13 0
+  39 0002 FFF7FEFF 		bl	SystemClock_Config
+  40              	.LVL0:
+  14:main/src/flashlight_main.c ****     MX_GPIO_Init();
+  41              		.loc 1 14 0
+  42 0006 FFF7FEFF 		bl	MX_GPIO_Init
+  43              	.LVL1:
+  44              	.L2:
+ARM GAS  /tmp/ccU1QAbB.s 			page 2
+
+
+  15:main/src/flashlight_main.c **** 
+  16:main/src/flashlight_main.c **** 
+  17:main/src/flashlight_main.c ****     while(1)
+  18:main/src/flashlight_main.c ****     {
+  19:main/src/flashlight_main.c ****         HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+  45              		.loc 1 19 0 discriminator 1
+  46 000a 8021     		movs	r1, #128
+  47 000c 8901     		lsls	r1, r1, #6
+  48 000e 0348     		ldr	r0, .L3
+  49 0010 FFF7FEFF 		bl	HAL_GPIO_TogglePin
+  50              	.LVL2:
+  20:main/src/flashlight_main.c ****         HAL_Delay(100);
+  51              		.loc 1 20 0 discriminator 1
+  52 0014 6420     		movs	r0, #100
+  53 0016 FFF7FEFF 		bl	HAL_Delay
+  54              	.LVL3:
+  55 001a F6E7     		b	.L2
+  56              	.L4:
+  57              		.align	2
+  58              	.L3:
+  59 001c 00080048 		.word	1207961600
+  60              		.cfi_endproc
+  61              	.LFE35:
+  63              		.text
+  64              	.Letext0:
+  65              		.file 2 "/usr/include/newlib/machine/_default_types.h"
+  66              		.file 3 "/usr/include/newlib/sys/_stdint.h"
+  67              		.file 4 "Drivers/CMSIS/Device/ST/STM32F0xx/Include/stm32f030x6.h"
+  68              		.file 5 "Core/Inc/main.h"
+  69              		.file 6 "Drivers/STM32F0xx_HAL_Driver/Inc/stm32f0xx_hal_gpio.h"
+  70              		.file 7 "Drivers/STM32F0xx_HAL_Driver/Inc/stm32f0xx_hal.h"
+ARM GAS  /tmp/ccU1QAbB.s 			page 3
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 flashlight_main.c
+     /tmp/ccU1QAbB.s:20     .text.main:0000000000000000 $t
+     /tmp/ccU1QAbB.s:25     .text.main:0000000000000000 main
+     /tmp/ccU1QAbB.s:59     .text.main:000000000000001c $d
+                     .debug_frame:0000000000000010 $d
+
+UNDEFINED SYMBOLS
+SystemClock_Config
+MX_GPIO_Init
+HAL_GPIO_TogglePin
+HAL_Delay

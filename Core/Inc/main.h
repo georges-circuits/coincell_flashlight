@@ -47,6 +47,7 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+void SystemClock_Config(void);
 
 /* USER CODE END EM */
 

@@ -55,6 +55,7 @@ Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_pwr.c \
 Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_pwr_ex.c \
 Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_flash.c \
 Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_flash_ex.c \
+main/src/flashlight_main.c \
 Core/Src/system_stm32f0xx.c \
 Core/Src/adc.c \
 Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_adc.c \
@@ -107,7 +108,6 @@ AS_DEFS =
 # C defines
 C_DEFS =  \
 -DUSE_HAL_DRIVER \
--DSTM32F030x6
 -DUSE_HAL_DRIVER \
 -DSTM32F030x6
 
@@ -117,11 +117,11 @@ AS_INCLUDES =
 
 # C includes
 C_INCLUDES =  \
+-Imain/inc \
 -ICore/Inc \
 -IDrivers/STM32F0xx_HAL_Driver/Inc \
 -IDrivers/STM32F0xx_HAL_Driver/Inc/Legacy \
 -IDrivers/CMSIS/Device/ST/STM32F0xx/Include \
--IDrivers/CMSIS/Include
 -IDrivers/CMSIS/Include
 
 
