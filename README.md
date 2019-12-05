@@ -1,4 +1,4 @@
-#Coincell flashlight project
+Coincell flashlight project
 
 #Worklog
 ###Dec 5
