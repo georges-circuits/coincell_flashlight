@@ -27,7 +27,31 @@ enum led_id
 
 volatile bool leds_buffer[LED_NUM][MAX_CYCLES];
 volatile bool leds_display[LED_NUM][MAX_CYCLES];
-volatile bool updated = 0;
+volatile bool updated;
+volatile uint8_t led_vals[LED_NUM][4]; // 0 are current, 1 are desired, 2 is the rate of change, 3 effects
+
+void led_write_pwm(uint8_t led, int8_t value)
+{
+    for (int i = 0; i < MAX_CYCLES; i++)
+    {
+        leds_buffer[led][i] = value & 1;
+        value >>= 1;
+    }
+    updated = 1;
+}
+
+void led_fade(uint8_t led, int8_t value, int8_t rate)
+{
+    led_vals[led][1] = value;
+    led_vals[led][2] = rate;
+}
+
+void led_fade_inout(uint8_t led, int8_t value, int8_t rate)
+{
+    led_vals[led][1] = value;
+    led_vals[led][2] = rate;
+    led_vals[led][3] = 1;
+}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -58,18 +82,46 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
     if (htim->Instance == TIM3)
     {
+        //HAL_GPIO_TogglePin(LED5_GPIO_Port, LED5_Pin);
+        for (int i = 0; i < LED_NUM; i++)
+        {
+            if (led_vals[i][2])
+            {
+                // in case the value is so close to desired it would overshoot
+                if ((led_vals[i][0] > led_vals[i][1] - led_vals[i][2] && 
+                    led_vals[i][0] < led_vals[i][1] + led_vals[i][2]) ||
+                    led_vals[i][0] >= MAX_PWM)
+                {
+                    led_vals[i][0] = led_vals[i][1];
+                }
+                
+                if (led_vals[i][0] > led_vals[i][1])
+                    led_vals[i][0] -= led_vals[i][2];
+                
+                if (led_vals[i][0] < led_vals[i][1])
+                    led_vals[i][0] += led_vals[i][2];
+                
+                // resets the rate of change value to 0 once the fade is complete
+                if (led_vals[i][0] == led_vals[i][1])
+                {
+                    if (led_vals[i][3])
+                    {
+                        // after fade in fade back out
+                        led_vals[i][0] -= led_vals[i][2];
+                        led_vals[i][1] = 0;
+                        led_vals[i][3] = 0;
+                    }
+                    else
+                    {
+                        led_vals[i][2] = 0;
+                    }
+                }
+                
+                led_write_pwm(i, led_vals[i][0]);            
+            }
+        }
         
     }
-}
-
-void led_write_pwm(uint8_t led, int8_t value)
-{
-    for (int i = 0; i < MAX_CYCLES; i++)
-    {
-        leds_buffer[led][i] = value & 1;
-        value >>= 1;
-    }
-    updated = 1;
 }
 
 int main(void)
@@ -78,33 +130,20 @@ int main(void)
     SystemClock_Config();
     MX_GPIO_Init();
     MX_TIM1_Init();
-    //MX_TIM3_Init();
+    MX_TIM3_Init();
 
     HAL_TIM_Base_Start_IT(&htim1);
+    HAL_TIM_Base_Start_IT(&htim3);
 
     while(1)
     {
-        HAL_GPIO_TogglePin(LED0_GPIO_Port, LED0_Pin);
-        /*HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-        HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
-        HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
-        HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
-        HAL_GPIO_TogglePin(LED5_GPIO_Port, LED5_Pin);
-        HAL_GPIO_TogglePin(LEDW_GPIO_Port, LEDW_Pin); */
-
-        for (int i = 0; i < 63; i++)
+        for (int i = 0; i < LED_NUM - 1; i++)
         {
-            led_write_pwm(LED_G, i);
-            led_write_pwm(LED_R, i);
-            HAL_Delay(10);
+            led_fade_inout(i, MAX_PWM, 2);
+            HAL_Delay(200);
         }
-        for (int i = 63; i >= 0; i--)
-        {
-            led_write_pwm(LED_G, i);
-            led_write_pwm(LED_R, i);
-            HAL_Delay(10);
-        }
+        
 
-        HAL_Delay(1000);
+        HAL_Delay(2000);
     }
 }
