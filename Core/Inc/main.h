@@ -47,18 +47,19 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
-void SystemClock_Config(void);
-void MX_GPIO_Init(void);
-void MX_TIM1_Init(void);
-void MX_TIM3_Init(void);
-void MX_ADC_Init(void);
+extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim3;
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+void SystemClock_Config(void);
+void MX_GPIO_Init(void);
+void MX_TIM1_Init(void);
+void MX_TIM3_Init(void);
+void MX_ADC_Init(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
