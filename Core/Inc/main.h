@@ -49,6 +49,8 @@ extern "C" {
 /* USER CODE BEGIN EM */
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim3;
+//extern IWDG_HandleTypeDef hiwdg;
+extern RTC_HandleTypeDef hrtc;
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
@@ -60,13 +62,16 @@ void MX_GPIO_Init(void);
 void MX_TIM1_Init(void);
 void MX_TIM3_Init(void);
 void MX_ADC_Init(void);
+//void MX_IWDG_Init(void);
+void MX_RTC_Init(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
 #define LEDW_Pin GPIO_PIN_0
 #define LEDW_GPIO_Port GPIOF
-#define SHAKE_Pin GPIO_PIN_2
-#define SHAKE_GPIO_Port GPIOA
+#define SHAKE_IRQ_Pin GPIO_PIN_2
+#define SHAKE_IRQ_GPIO_Port GPIOA
+#define SHAKE_IRQ_EXTI_IRQn EXTI2_3_IRQn
 #define BUTTON_Pin GPIO_PIN_3
 #define BUTTON_GPIO_Port GPIOA
 #define LED5_Pin GPIO_PIN_4

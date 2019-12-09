@@ -7,11 +7,17 @@
 
 #include "main.h"
 #include "flashlight_main.h"
+
 #include <stdbool.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+//#include <math.h>
 
 #define MAX_CYCLES 6
 #define MAX_PWM 63 // 2^MAX_CYCLES - 1
+
+#define FLASH_START 0x08003000 //sector 3
 
 enum led_id
 {
@@ -29,6 +35,8 @@ volatile bool leds_buffer[LED_NUM][MAX_CYCLES];
 volatile bool leds_display[LED_NUM][MAX_CYCLES];
 volatile bool updated;
 volatile uint8_t led_vals[LED_NUM][4]; // 0 are current, 1 are desired, 2 is the rate of change, 3 effects
+
+volatile int shake_count = 0;
 
 void led_write_pwm(uint8_t led, int8_t value)
 {
@@ -124,26 +132,113 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
 }
 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == SHAKE_IRQ_Pin)
+    {
+        shake_count++;
+        led_fade_inout(LED_B, MAX_PWM, 2);
+    }
+}
+
+/* void watchdog_set(int window, int reload)
+{
+    hiwdg.Instance = IWDG;
+    hiwdg.Init.Prescaler = IWDG_PRESCALER_256;
+    hiwdg.Init.Window = window;
+    hiwdg.Init.Reload = reload;
+    if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    HAL_IWDG_Refresh(&hiwdg);
+}
+
+int watchdog_get_window(void)
+{
+    return hiwdg.Instance->WINR;
+}
+
+int watchdog_get_reload(void)
+{
+    return (int)hiwdg.Instance->RLR;
+} */
+
+void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
+{
+    led_fade_inout(LED_O, MAX_PWM, 1);
+
+    RTC_TimeTypeDef sTime = {0};
+    sTime.Hours = 0x0;
+    sTime.Minutes = 0x0;
+    sTime.Seconds = 0x0;
+    HAL_RTC_SetTime(hrtc, &sTime, RTC_FORMAT_BCD);
+
+    RTC_AlarmTypeDef sAlarm = {0};
+    sAlarm.AlarmTime.Hours = 0x0;
+    sAlarm.AlarmTime.Minutes = 0x0;
+    sAlarm.AlarmTime.Seconds = 0x15;
+    sAlarm.AlarmDateWeekDay = 0x1;
+    sAlarm.Alarm = RTC_ALARM_A;
+    HAL_RTC_SetAlarm_IT(hrtc, &sAlarm, RTC_FORMAT_BCD);
+}
+
+
+
 int main(void)
 {
     HAL_Init();
     SystemClock_Config();
     MX_GPIO_Init();
+    //MX_IWDG_Init();
     MX_TIM1_Init();
     MX_TIM3_Init();
+    MX_RTC_Init();
 
     HAL_TIM_Base_Start_IT(&htim1);
     HAL_TIM_Base_Start_IT(&htim3);
 
+    /* int reload = watchdog_get_reload();
+    int window = watchdog_get_window();
+    watchdog_set(4094, 4000); */
+
+    HAL_Delay(10);
+
+    srand(HAL_GetTick());
+    /* for (int i = 0; i < LED_NUM - 1; i++)
+    {
+        led_fade_inout(i, 10, 1);
+        HAL_Delay(50);
+    } */
+    //led_fade_inout(rand() % 6, MAX_PWM, rand() % 3 + 1);
+
     while(1)
     {
-        for (int i = 0; i < LED_NUM - 1; i++)
+
+        if (HAL_GPIO_ReadPin(BUTTON_GPIO_Port, BUTTON_Pin))
         {
-            led_fade_inout(i, MAX_PWM, 2);
-            HAL_Delay(200);
+            led_fade_inout(rand() % 6, MAX_PWM, rand() % 3 + 1);
         }
         
+        //led_fade_inout(test_r, MAX_PWM, 2);
 
-        HAL_Delay(2000);
+        //HAL_IWDG_Refresh(&hiwdg);
+        
+
+        HAL_Delay(200);
     }
+
+    led_fade_inout(LED_R, MAX_PWM, 2);
+    HAL_Delay(500);
+
+    /* HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU); 
+    // Enable WKUP pin
+    HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
+
+    HAL_SuspendTick();
+    HAL_PWR_EnterSTANDBYMode(); */
+
+    HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+
 }
