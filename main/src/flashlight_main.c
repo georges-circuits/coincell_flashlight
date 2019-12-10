@@ -12,12 +12,14 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-//#include <math.h>
+#include <math.h>
 
 #define MAX_CYCLES 6
 #define MAX_PWM 63 // 2^MAX_CYCLES - 1
 
-#define FLASH_START 0x08003000 //sector 3
+#define MAX_ACTIVITY 80
+#define MIN_ACTIVITY 20
+#define ACTIVITY_INCREMENT 5
 
 enum led_id
 {
@@ -31,12 +33,66 @@ enum led_id
     LED_NUM
 };
 
+enum functions
+{
+    STAY_IN_DETECTION,
+    NO_FUNCTION,
+    LED_TORCH_STATIC,
+    FUNCTIONS_NUM
+};
+
 volatile bool leds_buffer[LED_NUM][MAX_CYCLES];
 volatile bool leds_display[LED_NUM][MAX_CYCLES];
 volatile bool updated;
 volatile uint8_t led_vals[LED_NUM][4]; // 0 are current, 1 are desired, 2 is the rate of change, 3 effects
 
 volatile int shake_count = 0;
+volatile int rtc_alarm = 0;
+volatile int activity = MIN_ACTIVITY;
+
+uint8_t function = STAY_IN_DETECTION;
+
+
+/* ===== WAKEUP/SLEEP FUNCTIONS ===== */
+
+void power_down(void)
+{
+    HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 0);
+    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
+    HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
+    HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, 0);
+    HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, 0);
+    HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, 0);
+    HAL_GPIO_WritePin(LEDW_GPIO_Port, LEDW_Pin, 0);
+
+    HAL_TIM_Base_Stop_IT(&htim1);
+    HAL_TIM_Base_Stop_IT(&htim3);
+}
+
+void power_up(void)
+{
+    HAL_TIM_Base_Start_IT(&htim1);
+    HAL_TIM_Base_Start_IT(&htim3);
+}
+
+void wait_for_leds(void)
+{
+    int check = 0;
+    while (1)
+    {
+        check = 0;
+        for (int i = 0; i < LED_NUM; i++)
+            for (int j = 0; j < MAX_CYCLES; j++)
+                check += leds_buffer[i][j];
+
+        if (!check)
+            break;
+    }
+    
+}
+
+
+/* ===== LED FUNCTIONS ===== */
 
 void led_write_pwm(uint8_t led, int8_t value)
 {
@@ -60,6 +116,18 @@ void led_fade_inout(uint8_t led, int8_t value, int8_t rate)
     led_vals[led][2] = rate;
     led_vals[led][3] = 1;
 }
+
+void led_on_just_one(uint8_t led, int8_t value, int8_t rate)
+{
+    led_fade(led, value, rate);
+    for (int i = LED_R; i < LED_NUM; i++)
+    {
+        if (i != led)
+            led_fade(i, 0, rate);
+    }
+}
+
+/* ===== INTERRUPTS AND USER INPUT FUNCTIONS ===== */
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -136,10 +204,220 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == SHAKE_IRQ_Pin)
     {
-        shake_count++;
-        led_fade_inout(LED_B, MAX_PWM, 2);
+        shake_count++;        
     }
 }
+
+void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
+{
+    RTC_TimeTypeDef sTime = {0};
+    sTime.Hours = 0x0;
+    sTime.Minutes = 0x0;
+    sTime.Seconds = 0x0;
+    HAL_RTC_SetTime(hrtc, &sTime, RTC_FORMAT_BCD);
+
+    HAL_RTC_DeactivateAlarm(hrtc, RTC_ALARM_A);
+    
+    RTC_AlarmTypeDef sAlarm = {0};
+    sAlarm.AlarmTime.Hours = 0x0;
+    sAlarm.AlarmTime.Minutes = 0x0;
+    sAlarm.AlarmTime.Seconds = 0x15;
+    sAlarm.AlarmDateWeekDay = 0x1;
+    sAlarm.Alarm = RTC_ALARM_A;
+    HAL_RTC_SetAlarm_IT(hrtc, &sAlarm, RTC_FORMAT_BCD);
+
+    rtc_alarm++;
+}
+
+uint8_t button_state(void)
+{
+    return HAL_GPIO_ReadPin(BUTTON_GPIO_Port, BUTTON_Pin);
+}
+
+/* ===== RNG FUNCTIONS ===== */
+
+// returns 0 or 1 at random based on the midpoint
+// midpoint 1-99 (%)
+uint8_t percent_chance_bool(uint8_t midpoint)
+{
+    if(rand() % 100 > midpoint)
+    {
+        return 1;
+    }
+    return 0;
+}
+
+uint8_t random_in_range(uint8_t from, uint8_t to)
+{
+    return rand() % (to - from + 1) + from;
+}
+
+uint8_t random_in_range_exp(uint8_t from, uint8_t to)
+{
+    int range = to - from;
+    int num = random_in_range(1, pow(4, range + 1));
+    for (uint8_t i = 0; i < range + 1; i++)
+    {
+        if (num >= pow(4, i) && num < pow(4, i + 1))
+            return range - i + from;
+    }
+    return from;
+}
+
+/* ===== MAIN ===== */
+
+int main(void)
+{
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_TIM1_Init();
+    MX_TIM3_Init();
+    MX_RTC_Init();
+
+    power_up();
+
+    srand(HAL_GetTick());
+    
+    // should only run once after wakeup
+    // as it exits stop mode the corresponding interrupt routine will get carried out
+    // and then it jumps into this loop
+    while (1)
+    {
+        HAL_Delay(10); // so it can catch the shake iterrupst 
+        power_up();
+
+        if (shake_count)
+        {
+            shake_count = 0;
+            led_fade_inout(LED_B, MAX_PWM, 4);
+            if (activity < MAX_ACTIVITY)
+            {
+                activity += ACTIVITY_INCREMENT;
+                led_fade_inout(LED_G, MAX_PWM, 4);
+            }
+        }
+        if (rtc_alarm)
+        {
+            led_fade_inout(LED_O, MAX_PWM, 4);
+            if (activity > MIN_ACTIVITY)
+            {
+                activity -= ACTIVITY_INCREMENT;
+                led_fade_inout(LED_P, MAX_PWM, 4);
+            }
+        }
+
+        // FIXME: it has to react to actvity + chance of not turning on at all
+        /* int rand_count = random_in_range_exp(1, 3);
+        for (int flash = 0; flash <= rand_count; flash++)
+        {
+            led_fade_inout(random_in_range(0, 5), random_in_range(30, MAX_PWM), random_in_range(1, 4));
+        } */
+
+        // detect the user input
+        function = STAY_IN_DETECTION;
+        int press_count = 0;
+        // based on button state to save power
+        if (button_state())
+        {
+            int timer = HAL_GetTick();
+            int timer_last_pressed = HAL_GetTick();
+            bool pressed = 0;
+            bool released = 0;
+            while (!function)
+            {
+                if (button_state())
+                {
+                    timer_last_pressed = HAL_GetTick();
+                    pressed = 1;
+                    if (HAL_GetTick() - timer > 100 && HAL_GetTick() - timer < 700)
+                    {
+                        led_on_just_one(press_count, 32, 2);
+                    }
+                    if (HAL_GetTick() - timer >= 700)
+                    {
+                        led_on_just_one(LED_W, 32, 2);
+                    }
+                    if (HAL_GetTick() - timer >= 1500)
+                    {
+                        function = LED_TORCH_STATIC;
+                        break;
+                    }
+                }
+                else
+                {
+                    released = 1; //TODO: implement it so if you just keep the button pressed it will only do the torch, go into the menu once you release the button for the first time
+                    if (function == LED_TORCH_STATIC)
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        if (pressed)
+                        {
+                            press_count++;
+                            if (press_count > 5)
+                            {
+                                press_count = 0;
+                            }
+                            pressed = 0;
+                            led_on_just_one(press_count - 1, 32, 2);
+                        }
+                        timer = HAL_GetTick();
+                    }
+                }
+
+                if (HAL_GetTick() - timer_last_pressed > 1000)
+                {
+                    if (!press_count)
+                    {
+                        // breaks anyway so it will get out of the loop
+                        function = NO_FUNCTION;
+                    }
+                    break;
+                }
+                HAL_Delay(10);
+            }
+        }
+
+        if (function > NO_FUNCTION)
+        {
+            switch (function)
+            {
+                case LED_TORCH_STATIC:
+                    shake_count = 0;
+                    led_fade(LED_W, MAX_PWM, 3);
+                    while (shake_count < 50) {
+                        // due to no debouncing it can accumulate pretty quickly unitentionaly
+                        if (shake_count > 5)
+                            shake_count--;
+                        HAL_Delay(100);
+                    }
+                    led_fade(LED_W, 0, 3);
+                    break;
+                
+                default:
+                    break;
+            }
+        }
+        
+        led_fade_inout(LED_R, MAX_PWM, 4);
+        HAL_Delay(500);
+
+        //wait_for_leds();
+        power_down();
+
+        rtc_alarm = 0;
+        shake_count = 0;
+        press_count = 0;
+
+
+        HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+        }
+    
+
+}
+
 
 /* void watchdog_set(int window, int reload)
 {
@@ -164,81 +442,9 @@ int watchdog_get_reload(void)
     return (int)hiwdg.Instance->RLR;
 } */
 
-void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
-{
-    led_fade_inout(LED_O, MAX_PWM, 1);
-
-    RTC_TimeTypeDef sTime = {0};
-    sTime.Hours = 0x0;
-    sTime.Minutes = 0x0;
-    sTime.Seconds = 0x0;
-    HAL_RTC_SetTime(hrtc, &sTime, RTC_FORMAT_BCD);
-
-    RTC_AlarmTypeDef sAlarm = {0};
-    sAlarm.AlarmTime.Hours = 0x0;
-    sAlarm.AlarmTime.Minutes = 0x0;
-    sAlarm.AlarmTime.Seconds = 0x15;
-    sAlarm.AlarmDateWeekDay = 0x1;
-    sAlarm.Alarm = RTC_ALARM_A;
-    HAL_RTC_SetAlarm_IT(hrtc, &sAlarm, RTC_FORMAT_BCD);
-}
-
-
-
-int main(void)
-{
-    HAL_Init();
-    SystemClock_Config();
-    MX_GPIO_Init();
-    //MX_IWDG_Init();
-    MX_TIM1_Init();
-    MX_TIM3_Init();
-    MX_RTC_Init();
-
-    HAL_TIM_Base_Start_IT(&htim1);
-    HAL_TIM_Base_Start_IT(&htim3);
-
-    /* int reload = watchdog_get_reload();
-    int window = watchdog_get_window();
-    watchdog_set(4094, 4000); */
-
-    HAL_Delay(10);
-
-    srand(HAL_GetTick());
-    /* for (int i = 0; i < LED_NUM - 1; i++)
+/* for (int i = 0; i < LED_NUM - 1; i++)
     {
         led_fade_inout(i, 10, 1);
         HAL_Delay(50);
     } */
     //led_fade_inout(rand() % 6, MAX_PWM, rand() % 3 + 1);
-
-    while(1)
-    {
-
-        if (HAL_GPIO_ReadPin(BUTTON_GPIO_Port, BUTTON_Pin))
-        {
-            led_fade_inout(rand() % 6, MAX_PWM, rand() % 3 + 1);
-        }
-        
-        //led_fade_inout(test_r, MAX_PWM, 2);
-
-        //HAL_IWDG_Refresh(&hiwdg);
-        
-
-        HAL_Delay(200);
-    }
-
-    led_fade_inout(LED_R, MAX_PWM, 2);
-    HAL_Delay(500);
-
-    /* HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU); 
-    // Enable WKUP pin
-    HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
-
-    HAL_SuspendTick();
-    HAL_PWR_EnterSTANDBYMode(); */
-
-    HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
-
-}
