@@ -17,9 +17,8 @@
 #define MAX_CYCLES 6
 #define MAX_PWM 63 // 2^MAX_CYCLES - 1
 
-#define MAX_ACTIVITY 80
-#define MIN_ACTIVITY 20
-#define ACTIVITY_INCREMENT 5
+#define MAX_ACTIVITY 75
+#define MIN_ACTIVITY 25
 
 enum led_id
 {
@@ -51,6 +50,7 @@ volatile int rtc_alarm = 0;
 volatile int activity = MIN_ACTIVITY;
 
 uint8_t function = STAY_IN_DETECTION;
+int supress_flash = 0;
 
 /* ===== OTHER FUNCTIONS ===== */
 
@@ -209,7 +209,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                 // in case the value is so close to desired it would overshoot
                 if ((led_vals[i][0] > led_vals[i][1] - led_vals[i][2] && 
                     led_vals[i][0] < led_vals[i][1] + led_vals[i][2]) ||
-                    led_vals[i][0] >= MAX_PWM)
+                    led_vals[i][0] > MAX_PWM)
                 {
                     led_vals[i][0] = led_vals[i][1];
                 }
@@ -336,7 +336,7 @@ int main(void)
             //led_fade_inout(LED_B, MAX_PWM, 4);
             if (activity < MAX_ACTIVITY)
             {
-                activity += 2;
+                activity += random_in_range(1, 3);
                 //led_fade_inout(LED_G, MAX_PWM, 4);
             }
         }
@@ -345,7 +345,7 @@ int main(void)
             //led_fade_inout(LED_O, MAX_PWM, 4);
             if (activity > MIN_ACTIVITY)
             {
-                activity -= 5;
+                activity -= random_in_range(2, 5);
                 //led_fade_inout(LED_P, MAX_PWM, 4);
             }
         }
@@ -362,6 +362,7 @@ int main(void)
             bool released = 0;
             bool not_released = 1;
             bool pass[2] = {1, 1};
+            supress_flash = 5;
             while (1)
             {
                 if (button_state())
@@ -435,34 +436,43 @@ int main(void)
         }
         else
         {
-            int rand_count = random_in_range_exp(1, 3);
-            if (shake_count)
+            if (activity > MIN_ACTIVITY && !supress_flash)
             {
-                if (shake_count > (MIN_ACTIVITY + activity) / 2)
-                    shake_count = MIN_ACTIVITY;
+                int rand_count = random_in_range_exp(1, 3);
+                if (shake_count)
+                {
+                    if (shake_count > (MIN_ACTIVITY + activity) / 2)
+                        shake_count = MIN_ACTIVITY;
+                }
+                for (int flash = 0; flash < rand_count; flash++)
+                {
+                    if (percent_chance_bool(activity - shake_count))
+                        led_fade_inout(random_in_range(0, 5), random_in_range(30, MAX_PWM), random_in_range_exp(1, 3));
+                }
             }
-            for (int flash = 0; flash < rand_count; flash++)
-            {
-                if (percent_chance_bool(activity - shake_count))
-                    led_fade_inout(random_in_range(0, 5), random_in_range(30, MAX_PWM), random_in_range_exp(1, 4));
-            }   
+            if (supress_flash > 0)
+                supress_flash--;
         }
 
         if (function > NO_FUNCTION)
         {
-            leds_all_off();
+            if (function != LED_TORCH_STATIC)
+            {
+                leds_all_off();
+            }
             switch (function)
             {
                 case LED_TORCH_STATIC:
                     shake_count = 0;
                     led_fade(LED_W, MAX_PWM, 2);
-                    while (shake_count < 50) {
+                    while (shake_count < 50) 
+                    {
                         // due to no debouncing shake_count can accumulate pretty quickly unitentionaly
                         if (shake_count > 5)
                             shake_count--;
                         HAL_Delay(100);
                     }
-                    led_fade(LED_W, 0, 2);
+                    led_fade(LED_W, 0, 1);
                     break;
                 
                 default:
@@ -474,7 +484,7 @@ int main(void)
         //led_fade_inout(LED_R, MAX_PWM, 4);
         //HAL_Delay(500);
 
-        HAL_Delay(50);
+        HAL_Delay(20);
         wait_for_leds();
         //leds_all_off();
         //wait_for_leds();
