@@ -9,10 +9,10 @@
 #include "flashlight_main.h"
 
 #include <stdbool.h>
-#include <string.h>
+//#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
+//#include <math.h>
 
 #define MAX_CYCLES 6
 #define MAX_PWM 63 // 2^MAX_CYCLES - 1
@@ -52,11 +52,26 @@ volatile int activity = MIN_ACTIVITY;
 
 uint8_t function = STAY_IN_DETECTION;
 
+/* ===== OTHER FUNCTIONS ===== */
+
+int my_pow(int base, int x)
+{
+    int a = 1;
+    for (int i = 0; i < x; i++)
+    {
+        a *= base;
+    }
+    return a;
+}
+
 
 /* ===== WAKEUP/SLEEP FUNCTIONS ===== */
 
 void power_down(void)
 {
+    HAL_TIM_Base_Stop_IT(&htim1);
+    HAL_TIM_Base_Stop_IT(&htim3);
+
     HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 0);
     HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
     HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
@@ -64,9 +79,6 @@ void power_down(void)
     HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, 0);
     HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, 0);
     HAL_GPIO_WritePin(LEDW_GPIO_Port, LEDW_Pin, 0);
-
-    HAL_TIM_Base_Stop_IT(&htim1);
-    HAL_TIM_Base_Stop_IT(&htim3);
 }
 
 void power_up(void)
@@ -78,17 +90,28 @@ void power_up(void)
 void wait_for_leds(void)
 {
     int check = 0;
+    int timer = HAL_GetTick();
     while (1)
     {
         check = 0;
-        for (int i = 0; i < LED_NUM; i++)
+        /* for (int i = 0; i < LED_NUM; i++)
             for (int j = 0; j < MAX_CYCLES; j++)
-                check += leds_buffer[i][j];
+                check += leds_buffer[i][j]; */
+        
+        for (int i = 0; i < LED_NUM; i++)
+        {
+            check += led_vals[i][0];
+        }
 
-        if (!check)
+        if (check == 0)
             break;
+
+        if(HAL_GetTick() - timer > 2000)
+        {
+           display_error(5);
+           break;
+        }
     }
-    
 }
 
 
@@ -119,11 +142,31 @@ void led_fade_inout(uint8_t led, int8_t value, int8_t rate)
 
 void led_on_just_one(uint8_t led, int8_t value, int8_t rate)
 {
-    led_fade(led, value, rate);
+    if (led_vals[led][0] != value)
+    {
+        led_fade(led, value, rate);
+    }
     for (int i = LED_R; i < LED_NUM; i++)
     {
         if (i != led)
             led_fade(i, 0, rate);
+    }
+}
+
+void leds_all_off(void)
+{
+    for (int i = LED_R; i < LED_NUM; i++)
+    {
+        led_fade(i, 0, 5);
+    }
+}
+
+void display_error(uint8_t pulses)
+{
+    for (int i = 0; i < pulses + 1; i++)
+    {
+        led_fade_inout(LED_R, MAX_PWM, 15);
+        HAL_Delay(150);
     }
 }
 
@@ -240,7 +283,7 @@ uint8_t button_state(void)
 // midpoint 1-99 (%)
 uint8_t percent_chance_bool(uint8_t midpoint)
 {
-    if(rand() % 100 > midpoint)
+    if(rand() % 100 < midpoint)
     {
         return 1;
     }
@@ -255,10 +298,10 @@ uint8_t random_in_range(uint8_t from, uint8_t to)
 uint8_t random_in_range_exp(uint8_t from, uint8_t to)
 {
     int range = to - from;
-    int num = random_in_range(1, pow(4, range + 1));
+    int num = random_in_range(1, my_pow(4, range + 1));
     for (uint8_t i = 0; i < range + 1; i++)
     {
-        if (num >= pow(4, i) && num < pow(4, i + 1))
+        if (num >= my_pow(4, i) && num < my_pow(4, i + 1))
             return range - i + from;
     }
     return from;
@@ -284,35 +327,28 @@ int main(void)
     // and then it jumps into this loop
     while (1)
     {
-        HAL_Delay(10); // so it can catch the shake iterrupst 
+        HAL_Delay(10); // so it can catch the shake iterrupts
         power_up();
 
         if (shake_count)
         {
             shake_count = 0;
-            led_fade_inout(LED_B, MAX_PWM, 4);
+            //led_fade_inout(LED_B, MAX_PWM, 4);
             if (activity < MAX_ACTIVITY)
             {
-                activity += ACTIVITY_INCREMENT;
-                led_fade_inout(LED_G, MAX_PWM, 4);
+                activity += 2;
+                //led_fade_inout(LED_G, MAX_PWM, 4);
             }
         }
         if (rtc_alarm)
         {
-            led_fade_inout(LED_O, MAX_PWM, 4);
+            //led_fade_inout(LED_O, MAX_PWM, 4);
             if (activity > MIN_ACTIVITY)
             {
-                activity -= ACTIVITY_INCREMENT;
-                led_fade_inout(LED_P, MAX_PWM, 4);
+                activity -= 5;
+                //led_fade_inout(LED_P, MAX_PWM, 4);
             }
         }
-
-        // FIXME: it has to react to actvity + chance of not turning on at all
-        /* int rand_count = random_in_range_exp(1, 3);
-        for (int flash = 0; flash <= rand_count; flash++)
-        {
-            led_fade_inout(random_in_range(0, 5), random_in_range(30, MAX_PWM), random_in_range(1, 4));
-        } */
 
         // detect the user input
         function = STAY_IN_DETECTION;
@@ -324,19 +360,39 @@ int main(void)
             int timer_last_pressed = HAL_GetTick();
             bool pressed = 0;
             bool released = 0;
-            while (!function)
+            bool not_released = 1;
+            bool pass[2] = {1, 1};
+            while (1)
             {
                 if (button_state())
                 {
                     timer_last_pressed = HAL_GetTick();
                     pressed = 1;
-                    if (HAL_GetTick() - timer > 100 && HAL_GetTick() - timer < 700)
+                    if (not_released)
                     {
-                        led_on_just_one(press_count, 32, 2);
+                        if (HAL_GetTick() - timer >= 100 && pass[0])
+                        {
+                            pass[0] = 0;
+                            led_on_just_one(LED_W, 12, 1);
+                        }
                     }
-                    if (HAL_GetTick() - timer >= 700)
+                    else
                     {
-                        led_on_just_one(LED_W, 32, 2);
+                        if (HAL_GetTick() - timer >= 700 && pass[1])
+                        {
+                            pass[1] = 0;
+                            led_on_just_one(LED_W, 12, 1);
+                            press_count = 0;
+                        }
+                        if (released)
+                        {
+                            released = 0;
+                            press_count++;
+                            if (press_count > 5)
+                            {
+                                press_count = 0;
+                            }
+                        }
                     }
                     if (HAL_GetTick() - timer >= 1500)
                     {
@@ -346,71 +402,87 @@ int main(void)
                 }
                 else
                 {
-                    released = 1; //TODO: implement it so if you just keep the button pressed it will only do the torch, go into the menu once you release the button for the first time
-                    if (function == LED_TORCH_STATIC)
+                    if (not_released) // confirmation that you entered menu
                     {
-                        break;
-                    }
-                    else
-                    {
-                        if (pressed)
+                        leds_all_off();
+                        for (int i = 0; i < LED_NUM - 1; i++)
                         {
-                            press_count++;
-                            if (press_count > 5)
-                            {
-                                press_count = 0;
-                            }
-                            pressed = 0;
-                            led_on_just_one(press_count - 1, 32, 2);
+                            led_fade_inout(i, 20, 3);
+                            HAL_Delay(50);
                         }
-                        timer = HAL_GetTick();
+                        HAL_Delay(200);
+                    }
+                    pass[1] = 1;
+                    not_released = 0;
+                    timer = HAL_GetTick();
+                    if (pressed)
+                    {
+                        pressed = 0;
+                        // delays this for the first press, otherwise will work as expected
+                        // this is so it skips incrementing press_count 
+                        released = 1; 
+                        led_on_just_one(press_count, 32, 2);
                     }
                 }
 
-                if (HAL_GetTick() - timer_last_pressed > 1000)
+                if (HAL_GetTick() - timer_last_pressed > 2000)
                 {
-                    if (!press_count)
-                    {
-                        // breaks anyway so it will get out of the loop
-                        function = NO_FUNCTION;
-                    }
+                    function = press_count + 3;
                     break;
                 }
                 HAL_Delay(10);
             }
         }
+        else
+        {
+            int rand_count = random_in_range_exp(1, 3);
+            if (shake_count)
+            {
+                if (shake_count > (MIN_ACTIVITY + activity) / 2)
+                    shake_count = MIN_ACTIVITY;
+            }
+            for (int flash = 0; flash < rand_count; flash++)
+            {
+                if (percent_chance_bool(activity - shake_count))
+                    led_fade_inout(random_in_range(0, 5), random_in_range(30, MAX_PWM), random_in_range_exp(1, 4));
+            }   
+        }
 
         if (function > NO_FUNCTION)
         {
+            leds_all_off();
             switch (function)
             {
                 case LED_TORCH_STATIC:
                     shake_count = 0;
-                    led_fade(LED_W, MAX_PWM, 3);
+                    led_fade(LED_W, MAX_PWM, 2);
                     while (shake_count < 50) {
-                        // due to no debouncing it can accumulate pretty quickly unitentionaly
+                        // due to no debouncing shake_count can accumulate pretty quickly unitentionaly
                         if (shake_count > 5)
                             shake_count--;
                         HAL_Delay(100);
                     }
-                    led_fade(LED_W, 0, 3);
+                    led_fade(LED_W, 0, 2);
                     break;
                 
                 default:
+                    display_error(10);
                     break;
             }
         }
         
-        led_fade_inout(LED_R, MAX_PWM, 4);
-        HAL_Delay(500);
+        //led_fade_inout(LED_R, MAX_PWM, 4);
+        //HAL_Delay(500);
 
+        HAL_Delay(50);
+        wait_for_leds();
+        //leds_all_off();
         //wait_for_leds();
         power_down();
 
         rtc_alarm = 0;
         shake_count = 0;
         press_count = 0;
-
 
         HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
         }

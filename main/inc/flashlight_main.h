@@ -11,6 +11,6 @@
 #include "stm32f0xx_hal.h"
 
 
-void decide(void);
+void display_error(uint8_t pulses);
 
 #endif 
