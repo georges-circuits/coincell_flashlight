@@ -37,6 +37,9 @@ enum functions
     STAY_IN_DETECTION,
     NO_FUNCTION,
     LED_TORCH_STATIC,
+    LED_TORCH_SIGNAL,
+    DISPLAY_TEMP,
+    DISPLAY_BATTERY,
     FUNCTIONS_NUM
 };
 
@@ -408,7 +411,7 @@ int main(void)
                         leds_all_off();
                         for (int i = 0; i < LED_NUM - 1; i++)
                         {
-                            led_fade_inout(i, 20, 3);
+                            led_fade_inout(i, 10, 1);
                             HAL_Delay(50);
                         }
                         HAL_Delay(200);
@@ -475,6 +478,18 @@ int main(void)
                     led_fade(LED_W, 0, 1);
                     break;
                 
+                case LED_TORCH_SIGNAL:
+                    while (button_state()) {}
+                    while (!button_state()) 
+                    {
+                        led_fade(LED_W, MAX_PWM, 30);
+                        HAL_Delay(50);
+                        led_fade(LED_W, 0, 30);
+                        HAL_Delay(100);
+                    }
+                    led_fade(LED_W, 0, 30);
+                    break;
+
                 default:
                     display_error(10);
                     break;
