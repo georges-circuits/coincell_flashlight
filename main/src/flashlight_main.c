@@ -14,11 +14,14 @@
 #include <stdlib.h>
 //#include <math.h>
 
-#define MAX_CYCLES 6
-#define MAX_PWM 63 // 2^MAX_CYCLES - 1
+#define MAX_CYCLES      6
+#define MAX_PWM         63 // 2^MAX_CYCLES - 1
 
-#define MAX_ACTIVITY 75
-#define MIN_ACTIVITY 25
+#define MAX_ACTIVITY    75
+#define MIN_ACTIVITY    25
+
+#define ALARM_SEC       0x00 // 0x15 for testing
+#define ALARM_MINS      0x1
 
 enum led_id
 {
@@ -274,8 +277,8 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
     
     RTC_AlarmTypeDef sAlarm = {0};
     sAlarm.AlarmTime.Hours = 0x0;
-    sAlarm.AlarmTime.Minutes = 0x0;
-    sAlarm.AlarmTime.Seconds = 0x15;
+    sAlarm.AlarmTime.Minutes = ALARM_MINS;
+    sAlarm.AlarmTime.Seconds = ALARM_SEC;
     sAlarm.AlarmDateWeekDay = 0x1;
     sAlarm.Alarm = RTC_ALARM_A;
     HAL_RTC_SetAlarm_IT(hrtc, &sAlarm, RTC_FORMAT_BCD);
@@ -323,11 +326,12 @@ uint8_t random_in_range(uint8_t from, uint8_t to)
 
 uint8_t random_in_range_exp(uint8_t from, uint8_t to)
 {
+    const uint8_t base = 3;
     int range = to - from;
-    int num = random_in_range(1, my_pow(4, range + 1));
+    int num = random_in_range(1, my_pow(base, range + 1));
     for (uint8_t i = 0; i < range + 1; i++)
     {
-        if (num >= my_pow(4, i) && num < my_pow(4, i + 1))
+        if (num >= my_pow(base, i) && num < my_pow(base, i + 1))
             return range - i + from;
     }
     return from;
@@ -346,6 +350,8 @@ int main(void)
     MX_ADC_Init();
     MX_DMA_Init();
 
+    HAL_ADC_DeInit(&hadc);
+
     power_up();
 
     srand(HAL_GetTick());
@@ -361,13 +367,13 @@ int main(void)
 
         power_up();
 
-        if (shake_count > 1 || button_state())
+        if (shake_count > 0 || button_state())
         {
             //shake_count = 0;
             //led_fade_inout(LED_B, MAX_PWM, 4);
             if (activity < MAX_ACTIVITY)
             {
-                activity += random_in_range(2, 15); //(my_abs(MAX_ACTIVITY - activity) / 10)
+                activity += random_in_range(5, 20); //(my_abs(MAX_ACTIVITY - activity) / 10)
                 //led_fade_inout(LED_G, MAX_PWM, 4);
             }
         }
@@ -393,7 +399,7 @@ int main(void)
             bool released = 0;
             bool not_released = 1;
             bool pass[2] = {1, 1};
-            supress_flash = 5;
+            supress_flash = 1;
             while (1)
             {
                 if (button_state())
@@ -470,7 +476,7 @@ int main(void)
             if (activity > MIN_ACTIVITY && !supress_flash)
             {
                 int rand_count = random_in_range_exp(1, 3);
-                int activity_led = activity;
+                //int activity_led = activity;
                 /* if (shake_count)
                 {
                     activity_led /= 3;
@@ -478,10 +484,10 @@ int main(void)
                 
                 for (int flash = 0; flash < rand_count; flash++)
                 {
-                    if (percent_chance_bool(activity_led))
+                    if (percent_chance_bool(activity))
                     {
                         led_fade_inout(random_in_range(0, 5), random_in_range(40, MAX_PWM), random_in_range_exp(1, 3));
-                        HAL_Delay(random_in_range(20, 200));
+                        HAL_Delay(random_in_range(20, 250));
                     }
                 }
             }
@@ -503,15 +509,14 @@ int main(void)
                     int timer = HAL_GetTick();
                     while (shake_count < 20) 
                     {
-                        update_shake(200);
+                        update_shake(100);
                         if (shake_count > 0)
                         {
                             shake_count--;
                             timer = HAL_GetTick();
                         }
-                        if (HAL_GetTick() - timer > 30000)
+                        if (HAL_GetTick() - timer > 15000)
                             break;
-                        //HAL_Delay(50);
                     }
                     led_fade(LED_W, 0, 1);
                     break;
@@ -554,7 +559,7 @@ int main(void)
         //led_fade_inout(LED_R, MAX_PWM, 4);
         //HAL_Delay(500);
 
-        HAL_Delay(20);
+        HAL_Delay(10);
         wait_for_leds();
         power_down();
 
