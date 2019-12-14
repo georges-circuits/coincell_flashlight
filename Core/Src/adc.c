@@ -25,7 +25,6 @@
 /* USER CODE END 0 */
 
 ADC_HandleTypeDef hadc;
-DMA_HandleTypeDef hdma_adc;
 
 /* ADC init function */
 void MX_ADC_Init(void)
@@ -39,14 +38,14 @@ void MX_ADC_Init(void)
   hadc.Init.Resolution = ADC_RESOLUTION_12B;
   hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
-  hadc.Init.EOCSelection = ADC_EOC_SEQ_CONV;
-  hadc.Init.LowPowerAutoWait = DISABLE;
+  hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc.Init.LowPowerAutoWait = ENABLE;
   hadc.Init.LowPowerAutoPowerOff = ENABLE;
   hadc.Init.ContinuousConvMode = DISABLE;
   hadc.Init.DiscontinuousConvMode = DISABLE;
   hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc.Init.DMAContinuousRequests = ENABLE;
+  hadc.Init.DMAContinuousRequests = DISABLE;
   hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
   if (HAL_ADC_Init(&hadc) != HAL_OK)
   {
@@ -54,16 +53,9 @@ void MX_ADC_Init(void)
   }
   /** Configure for the selected ADC regular channel to be converted. 
   */
-  sConfig.Channel = ADC_CHANNEL_TEMPSENSOR;
+  sConfig.Channel = ADC_CHANNEL_VREFINT;
   sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
   sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Configure for the selected ADC regular channel to be converted. 
-  */
-  sConfig.Channel = ADC_CHANNEL_VREFINT;
   if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -81,29 +73,12 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
   /* USER CODE END ADC1_MspInit 0 */
     /* ADC1 clock enable */
     __HAL_RCC_ADC1_CLK_ENABLE();
-  
-    /* ADC1 DMA Init */
-    /* ADC Init */
-    hdma_adc.Instance = DMA1_Channel1;
-    hdma_adc.Init.Direction = DMA_PERIPH_TO_MEMORY;
-    hdma_adc.Init.PeriphInc = DMA_PINC_DISABLE;
-    hdma_adc.Init.MemInc = DMA_MINC_ENABLE;
-    hdma_adc.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD;
-    hdma_adc.Init.MemDataAlignment = DMA_MDATAALIGN_WORD;
-    hdma_adc.Init.Mode = DMA_CIRCULAR;
-    hdma_adc.Init.Priority = DMA_PRIORITY_LOW;
-    if (HAL_DMA_Init(&hdma_adc) != HAL_OK)
-    {
-      Error_Handler();
-    }
-
-    __HAL_LINKDMA(adcHandle,DMA_Handle,hdma_adc);
-
-    /* ADC1 interrupt Init */
-    HAL_NVIC_SetPriority(ADC1_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(ADC1_IRQn);
   /* USER CODE BEGIN ADC1_MspInit 1 */
-
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI14;
+  RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
+  RCC_OscInitStruct.HSI14CalibrationValue = 16;
+  HAL_RCC_OscConfig(&RCC_OscInitStruct);
   /* USER CODE END ADC1_MspInit 1 */
   }
 }
@@ -118,14 +93,11 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
   /* USER CODE END ADC1_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_ADC1_CLK_DISABLE();
-
-    /* ADC1 DMA DeInit */
-    HAL_DMA_DeInit(adcHandle->DMA_Handle);
-
-    /* ADC1 interrupt Deinit */
-    HAL_NVIC_DisableIRQ(ADC1_IRQn);
   /* USER CODE BEGIN ADC1_MspDeInit 1 */
-
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI14;
+  RCC_OscInitStruct.HSI14State = RCC_HSI14_OFF;
+  HAL_RCC_OscConfig(&RCC_OscInitStruct);
   /* USER CODE END ADC1_MspDeInit 1 */
   }
 } 

@@ -20,8 +20,10 @@
 #define MAX_ACTIVITY    75
 #define MIN_ACTIVITY    25
 
-#define ALARM_SEC       0x00 // 0x15 for testing
-#define ALARM_MINS      0x1
+#define ALARM_SEC       0x0 // 0x15 for testing
+#define ALARM_MINS      0x3
+
+#define VREFINT_CAL ((uint16_t*)((uint32_t)0x1FFFF7BA))
 
 enum led_id
 {
@@ -42,7 +44,9 @@ enum functions
     LED_TORCH_STATIC,
     EXIT_MENU,
     LED_TORCH_SIGNAL,
-    DISPLAY_TEMP,
+    LED_TORCH_DOUBLEFLASH,
+    GAME_FOCUS,
+    SUSPEND_FLASH,
     DISPLAY_BATTERY,
     FUNCTIONS_NUM
 };
@@ -53,11 +57,13 @@ volatile bool updated;
 volatile uint8_t led_vals[LED_NUM][4]; // 0 are current, 1 are desired, 2 is the rate of change, 3 effects
 
 volatile int shake_count = 0;
+volatile int button_irq = 0;
 volatile int rtc_alarm = 0;
 volatile int activity = MIN_ACTIVITY;
 
 uint8_t function = STAY_IN_DETECTION;
 int supress_flash = 0;
+int suspend_flash_timer = 0; // gets decremented every alarm event
 
 /* ===== OTHER FUNCTIONS ===== */
 
@@ -76,6 +82,29 @@ int my_abs(int a)
     if (a < 0)
         return a * -1;
     return a;
+}
+
+int measure_vdd(void)
+{
+    HAL_ADC_MspInit(&hadc);
+    MX_ADC_Init();
+    HAL_Delay(100);
+    HAL_ADC_Start(&hadc);
+    uint32_t adcVal = 0;
+    if (HAL_ADC_PollForConversion(&hadc, 50) == HAL_OK)
+    {
+        adcVal = HAL_ADC_GetValue(&hadc);
+        //display_error(0);
+    }
+    else
+    {
+        display_error(5);
+    }
+    HAL_Delay(50);    
+    HAL_ADC_Stop(&hadc);
+    HAL_ADC_DeInit(&hadc);
+
+    return (int)(3300 * (*VREFINT_CAL) / adcVal);
 }
 
 /* ===== WAKEUP/SLEEP FUNCTIONS ===== */
@@ -165,6 +194,20 @@ void led_on_just_one(uint8_t led, int8_t value, int8_t rate)
             led_fade(i, 0, rate);
     }
 }
+
+void led_on_just_one_keep(uint8_t led_keep, uint8_t led, int8_t value, int8_t rate)
+{
+    if (led_vals[led][0] != value)
+    {
+        led_fade(led, value, rate);
+    }
+    for (int i = LED_R; i < LED_NUM; i++)
+    {
+        if (i != led && i != led_keep)
+            led_fade(i, 0, rate);
+    }
+}
+
 
 void leds_all_off(void)
 {
@@ -262,6 +305,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     {
         // used to be shake_count++;
         // now it's just a wakeup IRQ
+        button_irq++;
     }
 }
 
@@ -284,6 +328,8 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
     HAL_RTC_SetAlarm_IT(hrtc, &sAlarm, RTC_FORMAT_BCD);
 
     rtc_alarm++;
+    if (suspend_flash_timer > 0)
+        suspend_flash_timer--;
 }
 
 uint8_t button_state(void)
@@ -302,7 +348,7 @@ void update_shake(int time)
         if (new != old)
             shake_count++;
         old = new;
-        HAL_Delay(1);
+        //HAL_Delay(1);
     }
 }
 
@@ -347,45 +393,48 @@ int main(void)
     MX_TIM1_Init();
     MX_TIM3_Init();
     MX_RTC_Init();
-    MX_ADC_Init();
-    MX_DMA_Init();
+    /* MX_ADC_Init();
 
-    HAL_ADC_DeInit(&hadc);
-
+    HAL_ADC_MspDeInit(&hadc);
+    HAL_ADC_Stop(&hadc);
+    HAL_ADC_DeInit(&hadc); */
+    
     power_up();
 
     srand(HAL_GetTick());
-    
+
     // should only run once after wakeup
     // as it exits stop mode the corresponding interrupt routine will get carried out
     // and then it jumps into this loop
     while (1)
     {
-        //HAL_Delay(5); // so it can catch the shake iterrupts
-        //if (!button_state() || rtc_alarm)
-        update_shake(100);
+        update_shake(50);
 
-        power_up();
-
-        if (shake_count > 0 || button_state())
+        if (!suspend_flash_timer)
         {
-            //shake_count = 0;
-            //led_fade_inout(LED_B, MAX_PWM, 4);
-            if (activity < MAX_ACTIVITY)
+            if (shake_count > 1 || button_state())
             {
-                activity += random_in_range(5, 20); //(my_abs(MAX_ACTIVITY - activity) / 10)
-                //led_fade_inout(LED_G, MAX_PWM, 4);
+                //shake_count = 0;
+                //led_fade_inout(LED_B, MAX_PWM, 4);
+                if (activity < MAX_ACTIVITY)
+                {
+                    activity += random_in_range(5, 20); //(my_abs(MAX_ACTIVITY - activity) / 10)
+                    //led_fade_inout(LED_G, MAX_PWM, 4);
+                }
+            }
+            else //if (rtc_alarm)
+            {
+                //led_fade_inout(LED_O, MAX_PWM, 4);
+                if (activity > MIN_ACTIVITY)
+                {
+                    activity -= random_in_range(2, 6);
+                    //led_fade_inout(LED_P, MAX_PWM, 4);
+                }
             }
         }
-        else //if (rtc_alarm)
-        {
-            //led_fade_inout(LED_O, MAX_PWM, 4);
-            if (activity > MIN_ACTIVITY)
-            {
-                activity -= random_in_range(1, 3);
-                //led_fade_inout(LED_P, MAX_PWM, 4);
-            }
-        }
+
+        if (activity > MIN_ACTIVITY || button_state())
+            power_up();
 
         // detect the user input
         function = STAY_IN_DETECTION;
@@ -411,15 +460,15 @@ int main(void)
                         if (HAL_GetTick() - timer >= 100 && pass[0])
                         {
                             pass[0] = 0;
-                            led_on_just_one(LED_W, 12, 1);
+                            led_on_just_one(LED_W, 10, 1);
                         }
                     }
                     else
                     {
-                        if (HAL_GetTick() - timer >= 700 && pass[1])
+                        if (HAL_GetTick() - timer >= 600 && pass[1])
                         {
                             pass[1] = 0;
-                            led_on_just_one(LED_W, 12, 1);
+                            led_on_just_one(LED_W, 10, 1);
                             press_count = 0;
                         }
                         if (released)
@@ -432,7 +481,7 @@ int main(void)
                             }
                         }
                     }
-                    if (HAL_GetTick() - timer >= 1500)
+                    if (HAL_GetTick() - timer >= 1000)
                     {
                         function = LED_TORCH_STATIC;
                         break;
@@ -443,10 +492,10 @@ int main(void)
                     if (not_released) // confirmation that you entered menu
                     {
                         leds_all_off();
-                        for (int i = 0; i < LED_NUM - 1; i++)
+                        for (int i = LED_P; i >= 0; i--)
                         {
-                            led_fade_inout(i, 15, 1);
                             HAL_Delay(50);
+                            led_fade_inout(i, 15, 1);
                         }
                         HAL_Delay(200);
                     }
@@ -507,9 +556,9 @@ int main(void)
                     shake_count = 0;
                     led_fade(LED_W, MAX_PWM, 2);
                     int timer = HAL_GetTick();
-                    while (shake_count < 20) 
+                    while (shake_count < 50) 
                     {
-                        update_shake(100);
+                        update_shake(50);
                         if (shake_count > 0)
                         {
                             shake_count--;
@@ -522,7 +571,7 @@ int main(void)
                     break;
                 
                 case EXIT_MENU:
-                    for (int i = LED_NUM - 2; i >= 0; i--)
+                    for (int i = 0; i < LED_NUM - 1; i++)
                     {
                         led_fade_inout(i, 15, 1);
                         HAL_Delay(50);
@@ -541,14 +590,161 @@ int main(void)
                     led_fade(LED_W, 0, 30);
                     break;
 
-                case DISPLAY_TEMP:
-                    HAL_ADC_Start(&hadc);
-                    HAL_ADC_PollForConversion(&hadc, 100);
-                    //uint32_t val = HAL_ADC_GetValue(&hadc);
+                case LED_TORCH_DOUBLEFLASH:
+                    while (button_state()) {}
+                    button_irq = 0;
+                    while (!button_irq)
+                    {
+                        for (int i = 0; i < 2; i++)
+                        {
+                            led_fade(LED_W, MAX_PWM, 30);
+                            HAL_Delay(100);
+                            led_fade(LED_W, 0, 30);
+                            HAL_Delay(200);
+                        }
+                        HAL_Delay(1500);
+                    }
+                    led_fade(LED_W, 0, 30);
+                    break;
+
+                case GAME_FOCUS:
+                    {
+                    const uint8_t brightness = 10;
+                    for (int i = 2; i >= 0; i--)
+                    {
+                        led_fade_inout(i, brightness, 1);
+                        led_fade_inout(3 + i, brightness, 1);
+                        HAL_Delay(700);
+                    }
+                    for (int i = 0; i <= LED_P; i++)
+                    {
+                        led_fade_inout(i, brightness, 1);
+                    }
+                    HAL_Delay(1000);
+                    int speed = 1000;
+                    int speed_now = 0;
+                    int target = 1;
+                    int marker = 0;
+                    int timer_game = 0;
+                    bool button = 0;
+                    bool lost = 0;
+                    int score = 0;
+                    while (!lost)
+                    {
+                        target = random_in_range(LED_O, LED_P);
+                        if (speed > 100)
+                            speed -= random_in_range(30, 60);
+                        speed_now = speed; // - random_in_range(0, 40);
+                        led_on_just_one(target, brightness, 1);
+                        marker = 0;
+                        HAL_Delay(speed_now);
+                        while (!lost)
+                        {
+                            led_on_just_one_keep(target, marker, brightness * 3, 2);
+                            timer_game = HAL_GetTick();
+                            button = button_state();
+                            while (HAL_GetTick() - timer_game < speed_now && !button) {button = button_state();}
+                            if (button)
+                            {
+                                if (marker < target)
+                                    lost = 1;
+                                break;
+                            }
+                            marker++;
+                            if (marker > target)
+                                lost = 1;
+                        }
+                        score++;
+                        if (!button)
+                            HAL_Delay(speed_now);                    
+                    }
+                    leds_all_off();
+                    for (int i = 0; i <= LED_P; i++)
+                    {
+                        led_fade_inout(i, brightness, 1);
+                    }
+                    HAL_Delay(1000);
+                    while (score)
+                    {
+                        led_fade_inout(score % 6, brightness * 2, 1);
+                        score--;
+                        HAL_Delay(300);
+                    }
+                    HAL_Delay(500);
+                    for (int i = 0; i <= LED_P; i++)
+                    {
+                        led_fade_inout(i, brightness, 1);
+                    }
+                    HAL_Delay(300);
+                    for (int i = 0; i < 2; i++)
+                    {
+                        led_fade_inout(i, brightness, 1);
+                        led_fade_inout(2 + i, brightness, 1);
+                        led_fade_inout(4 + i, brightness, 1);
+                        HAL_Delay(200);
+                    }
+                    HAL_Delay(200);
+                    for (int i = 0; i < 3; i++)
+                    {
+                        led_fade_inout(i, brightness, 1);
+                        led_fade_inout(3 + i, brightness, 1);
+                        HAL_Delay(100);
+                    }
+                    HAL_Delay(100);
+                    for (int i = 0; i <= LED_P; i++)
+                    {
+                        led_fade_inout(i, brightness, 1);
+                        HAL_Delay(100);
+                    }
+                    HAL_Delay(100);
+                    break;
+                    }
+
+                case SUSPEND_FLASH:
+                    if (suspend_flash_timer)
+                    {
+                        suspend_flash_timer = 0;
+                        for (int i = 2; i >= 0; i--)
+                        {
+                            led_fade_inout(2 - i, 15, 1);
+                            led_fade_inout(3 + i, 15, 1);
+                            HAL_Delay(100);
+                        }
+                    }
+                    else
+                    {
+                        suspend_flash_timer = 180 / ALARM_MINS; // to give 3 hours
+                        activity = MIN_ACTIVITY;
+                        for (int i = 0; i < 3; i++)
+                        {
+                            led_fade_inout(2 - i, 15, 1);
+                            led_fade_inout(3 + i, 15, 1);
+                            HAL_Delay(100);
+                        }
+                    }
+                    HAL_Delay(100);
                     break;
 
                 case DISPLAY_BATTERY:
+                    {
+                    int vdd = measure_vdd();
+                    vdd -= 2300;
+                    if (vdd < 1)
+                        vdd = 1;
+                    if (vdd > 899)
+                        vdd = 899;
+                    vdd = vdd / 150;
+                    for (int i = 0; i < vdd; i++)
+                    {
+                        led_fade_inout(i, 20, 2);
+                        HAL_Delay(100);
+                    }
+                    led_fade(vdd, 20, 2);
+                    HAL_Delay(3000);
+                    led_on_just_one(vdd, 0, 1);
+                    HAL_Delay(100);
                     break;
+                    }
 
                 default:
                     display_error(10);
@@ -556,16 +752,17 @@ int main(void)
             }
         }
 
-        //led_fade_inout(LED_R, MAX_PWM, 4);
-        //HAL_Delay(500);
-
-        HAL_Delay(10);
-        wait_for_leds();
+        if (activity > MIN_ACTIVITY || function)
+        {
+            HAL_Delay(10);
+            wait_for_leds();
+        }
         power_down();
 
         rtc_alarm = 0;
         shake_count = 0;
         press_count = 0;
+        button_irq = 0;
 
         HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
     }
