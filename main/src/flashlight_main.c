@@ -135,11 +135,7 @@ void wait_for_leds(void)
     int timer = HAL_GetTick();
     while (1)
     {
-        check = 0;
-        /* for (int i = 0; i < LED_NUM; i++)
-            for (int j = 0; j < MAX_CYCLES; j++)
-                check += leds_buffer[i][j]; */
-        
+        check = 0;        
         for (int i = 0; i < LED_NUM; i++)
         {
             check += led_vals[i][0];
@@ -207,7 +203,6 @@ void led_on_just_one_keep(uint8_t led_keep, uint8_t led, int8_t value, int8_t ra
             led_fade(i, 0, rate);
     }
 }
-
 
 void leds_all_off(void)
 {
@@ -372,7 +367,7 @@ uint8_t random_in_range(uint8_t from, uint8_t to)
 
 uint8_t random_in_range_exp(uint8_t from, uint8_t to)
 {
-    const uint8_t base = 3;
+    const uint8_t base = 4;
     int range = to - from;
     int num = random_in_range(1, my_pow(base, range + 1));
     for (uint8_t i = 0; i < range + 1; i++)
@@ -393,32 +388,37 @@ int main(void)
     MX_TIM1_Init();
     MX_TIM3_Init();
     MX_RTC_Init();
-    /* MX_ADC_Init();
-
-    HAL_ADC_MspDeInit(&hadc);
-    HAL_ADC_Stop(&hadc);
-    HAL_ADC_DeInit(&hadc); */
     
     power_up();
-
     srand(HAL_GetTick());
+    
+    for (int i = 0; i <= LED_P; i++)
+    {
+        led_fade_inout(i, 32, 1);
+        HAL_Delay(400);
+    }
+    HAL_Delay(200);
+    for (int i = 0; i <= LED_P; i++)
+    {
+        led_fade_inout(i, 20, 1);
+    }
+    HAL_Delay(500);
 
     // should only run once after wakeup
     // as it exits stop mode the corresponding interrupt routine will get carried out
     // and then it jumps into this loop
     while (1)
     {
-        update_shake(50);
+        update_shake(100);
 
         if (!suspend_flash_timer)
         {
-            if (shake_count > 1 || button_state())
+            if (shake_count > 0 || button_state())
             {
-                //shake_count = 0;
                 //led_fade_inout(LED_B, MAX_PWM, 4);
                 if (activity < MAX_ACTIVITY)
                 {
-                    activity += random_in_range(5, 20); //(my_abs(MAX_ACTIVITY - activity) / 10)
+                    activity += random_in_range(10, 25); //(my_abs(MAX_ACTIVITY - activity) / 10)
                     //led_fade_inout(LED_G, MAX_PWM, 4);
                 }
             }
@@ -440,7 +440,7 @@ int main(void)
         function = STAY_IN_DETECTION;
         int press_count = 0;
         // based on button state to save power
-        if (button_state() && shake_count)
+        if (button_state() && shake_count > 2)
         {
             int timer = HAL_GetTick();
             int timer_last_pressed = HAL_GetTick();
@@ -546,9 +546,10 @@ int main(void)
 
         if (function > NO_FUNCTION)
         {
-            if (function != LED_TORCH_STATIC)
+            if (function != LED_TORCH_STATIC && function != EXIT_MENU)
             {
                 leds_all_off();
+                HAL_Delay(50);
             }
             switch (function)
             {
@@ -558,7 +559,7 @@ int main(void)
                     int timer = HAL_GetTick();
                     while (shake_count < 50) 
                     {
-                        update_shake(50);
+                        update_shake(40);
                         if (shake_count > 0)
                         {
                             shake_count--;
@@ -580,12 +581,13 @@ int main(void)
                 
                 case LED_TORCH_SIGNAL:
                     while (button_state()) {}
-                    while (!button_state()) 
+                    button_irq = 0;
+                    while (!button_irq) 
                     {
                         led_fade(LED_W, MAX_PWM, 30);
                         HAL_Delay(50);
                         led_fade(LED_W, 0, 30);
-                        HAL_Delay(100);
+                        HAL_Delay(150);
                     }
                     led_fade(LED_W, 0, 30);
                     break;
@@ -621,8 +623,7 @@ int main(void)
                         led_fade_inout(i, brightness, 1);
                     }
                     HAL_Delay(1000);
-                    int speed = 1000;
-                    int speed_now = 0;
+                    int speed = 750;
                     int target = 1;
                     int marker = 0;
                     int timer_game = 0;
@@ -632,18 +633,23 @@ int main(void)
                     while (!lost)
                     {
                         target = random_in_range(LED_O, LED_P);
+                        if (speed > 500)
+                            speed -= random_in_range(10, 25);
+                        if (speed > 250)
+                            speed -= random_in_range(5, 15);
                         if (speed > 100)
-                            speed -= random_in_range(30, 60);
-                        speed_now = speed; // - random_in_range(0, 40);
+                            speed -= random_in_range(3, 10);
+                        if (speed <= 100 && speed > 20)
+                            speed -= random_in_range(1, 5);
                         led_on_just_one(target, brightness, 1);
                         marker = 0;
-                        HAL_Delay(speed_now);
+                        HAL_Delay(speed);
                         while (!lost)
                         {
                             led_on_just_one_keep(target, marker, brightness * 3, 2);
                             timer_game = HAL_GetTick();
                             button = button_state();
-                            while (HAL_GetTick() - timer_game < speed_now && !button) {button = button_state();}
+                            while (HAL_GetTick() - timer_game < speed && !button) {button = button_state();}
                             if (button)
                             {
                                 if (marker < target)
@@ -656,9 +662,10 @@ int main(void)
                         }
                         score++;
                         if (!button)
-                            HAL_Delay(speed_now);                    
+                            HAL_Delay(speed);                    
                     }
                     leds_all_off();
+                    HAL_Delay(100);
                     for (int i = 0; i <= LED_P; i++)
                     {
                         led_fade_inout(i, brightness, 1);
@@ -713,7 +720,7 @@ int main(void)
                     }
                     else
                     {
-                        suspend_flash_timer = 180 / ALARM_MINS; // to give 3 hours
+                        suspend_flash_timer = 1440 / ALARM_MINS; // to give 24 hours
                         activity = MIN_ACTIVITY;
                         for (int i = 0; i < 3; i++)
                         {
@@ -737,10 +744,10 @@ int main(void)
                     for (int i = 0; i < vdd; i++)
                     {
                         led_fade_inout(i, 20, 2);
-                        HAL_Delay(100);
+                        HAL_Delay(50);
                     }
                     led_fade(vdd, 20, 2);
-                    HAL_Delay(3000);
+                    HAL_Delay(2000);
                     led_on_just_one(vdd, 0, 1);
                     HAL_Delay(100);
                     break;
