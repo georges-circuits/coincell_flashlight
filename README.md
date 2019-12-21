@@ -1,9 +1,9 @@
 # coincell_flashlight project
 Just a quick fun project to serve as a gift for Xmas. Nothing advanced here, the thing is based around the STM32F031F4. It spends most of its time in stop mode, is woken up by the RTC alarm event every 3 mins to check whether it's in motion and adjusts the activity value. There's also some additional functionality like flashlight and other modes.
 
-![Front](https://github.com/georges-circuits/coincell_flashlight/tree/master/images/front.jpg)
+![Front](images/front.jpg)
 
-![Lit up + battery](https://github.com/georges-circuits/coincell_flashlight/tree/master/images/light.jpg)
+![Lit up + battery](images/light.jpg)
 
 
 # Worklog
