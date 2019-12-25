@@ -5,6 +5,7 @@ Just a quick fun project to serve as a gift for Xmas. Nothing advanced here, the
 
 ![Lit up + battery](images/light.jpg)
 
+It uses "scrambled PWM" for LED dimming (generated in the TIM1 update event callback). Everything about the PWM and fading is explained in the comments in flashligh_main.c file.
 
 # Worklog
 ### Dec 5
@@ -22,3 +23,6 @@ There's also an issue where the vibration sensor hangs in the on state drawing 3
 
 ### Dec 20
 Calling the project finished for now.
+
+### Dec 25
+Updated README and added explanations for the timer routines.

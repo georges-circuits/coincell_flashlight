@@ -225,6 +225,10 @@ void display_error(uint8_t pulses)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
+    // generates the PWM according to the values in prescaler_sequence[] and 
+    // TIM1 settings in the tim.c file
+    // pulse lenghts are 100 us, 200 us, 400 us, 800 us, 1.6 ms, 3.2 ms
+    // therefor the PWM has 6-bit resolution and build-in ^2 gamma correction
     if (htim->Instance == TIM1)
     {
         static const int prescaler_sequence[] = {10, 20, 40, 80, 160, 320};
@@ -243,16 +247,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             cycle = 0;
 
         TIM1->PSC = (uint32_t)(prescaler_sequence[cycle]);
-
-        /* if (updated)
-        {
-            updated = 0;
-            memcpy(leds_display, leds_buffer, sizeof(leds_display));
-        } */
     }
+
+    // this timer provides timebase for all the fading effects (10 ms)
+    // not the most efficient way because this routine has to decide all of the below
+    // on its own for all 7 leds independently... 
+    // Has the benefit of being very easy to use and is pretty bullet proof
     if (htim->Instance == TIM3)
     {
-        //HAL_GPIO_TogglePin(LED5_GPIO_Port, LED5_Pin);
         for (int i = 0; i < LED_NUM; i++)
         {
             if (led_vals[i][2])
@@ -276,7 +278,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                 {
                     if (led_vals[i][3])
                     {
-                        // after fade in fade back out
+                        // after fade in fade back out (creates "breathe" effect)
                         led_vals[i][0] -= led_vals[i][2];
                         led_vals[i][1] = 0;
                         led_vals[i][3] = 0;
@@ -286,7 +288,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                         led_vals[i][2] = 0;
                     }
                 }
-                
                 led_write_pwm(i, led_vals[i][0]);            
             }
         }
@@ -298,8 +299,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == BUTTON_IRQ_Pin)
     {
-        // used to be shake_count++;
-        // now it's just a wakeup IRQ
+        // a wakeup IRQ
         button_irq++;
     }
 }
