@@ -26,3 +26,16 @@ Calling the project finished for now.
 
 ### Dec 25
 Updated README and added explanations for the timer routines.
+
+### Jan 18
+Observations so far:
+* The button is small and hard to press, it also started showing signs of damage on my unit.
+* Most of the other shake sensors are way more sensitive than the one I tested the "shake to switch off" feature originally. It makes the flashlight almost useless as a flashlight... 
+These can be potentially fixed with a firmware update
+
+Also, I could have used a spare GPIO to turn on the pullup resistors, which would have decreased the standby consumption. It didn't accur to me when I was designing the board. Maybe next time.
+On the upside it is (apart from the occaisional button glitch) holding up very well on the keychain.
+
+PS: I cloned this directory, tiped this log in nano, commited and pushed it from my phone using Termux :)
+
+
